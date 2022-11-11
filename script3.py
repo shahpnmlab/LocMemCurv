@@ -104,17 +104,72 @@ def average_intensity_profile(img: np.array, n_points: int, rad: int,
     return intensity_profile_avg, center
 
 
-def local_curvature(coords, num_points, plot=False):
-    coords_complete = np.vstack((coords, coords[1, :]))
+def find_peaks(intensity_profile_avg, peak_height, range_start, center):
+    global_radius = np.zeros(2)
+    no_peaks = []
 
-    distance = np.cumsum(np.sqrt(np.sum(np.diff(coords_complete, axis=0) ** 2, axis=1)))
+    for i in np.arange(n_points):
+        peak_middle, _ = scipy.signal.find_peaks(intensity_profile_avg[i], height=peak_height)
+        peak_outer, _ = scipy.signal.find_peaks(-np.gradient(intensity_profile_avg[i]), height=peak_height)
+        peak_inner, _ = scipy.signal.find_peaks(np.gradient(intensity_profile_avg[i]), height=peak_height)
+
+        peak_sum = 0
+        peak_counter = 0
+        if peak_middle.size != 0:
+            peak_sum += peak_middle[-1]
+            peak_counter += 1
+        if peak_outer.size != 0:
+            peak_sum += peak_outer[-1]
+            peak_counter += 1
+        if peak_inner.size != 0:
+            peak_sum += peak_inner[-1]
+            peak_counter += 1
+
+        if peak_counter == 0:
+            while len(no_peaks) <= no_peak_count:
+                no_peaks.append(i)
+        else:
+            peak = peak_sum / peak_counter
+            plussing = np.array([peak, 1])
+            global_radius += plussing
+            peak = peak + range_start
+        # ax[1].plot(-np.gradient(intensity_profile_avg[i]))
+
+        # ax[1].plot(peak, -np.gradient(intensity_profile_avg[i]), 'kx')
+        if peak_outer.size != 0:
+            peak_outer = peak_outer[-1] + range_start
+        if peak_middle.size != 0:
+            peak_middle = peak_middle[-1] + range_start
+        if peak_inner.size != 0:
+            peak_inner = peak_inner[-1] + range_start
+
+        xi_o = peak_outer * np.sin(i * d_alpha) + center
+        yi_o = peak_outer * np.cos(i * d_alpha) + center
+        xi_m = peak_middle * np.sin(i * d_alpha) + center
+        yi_m = peak_middle * np.cos(i * d_alpha) + center
+        xi_i = peak_inner * np.sin(i * d_alpha) + center
+        yi_i = peak_inner * np.cos(i * d_alpha) + center
+        detected_xi = peak * np.sin(i * d_alpha) + center
+        detected_yi = peak * np.cos(i * d_alpha) + center
+        global_radius[0] = global_radius[0] / global_radius[1]
+
+        # for i in no_peaks:
+        #    scale = (global_radius[0] + range_start) / rad
+        #    ax[0].scatter(s*(circular_points[i][1]-center)+center, s*(circular_points[i][0]-center)+center, c='r', s=5)
+        return np.vstack((detected_xi, detected_yi))
+
+
+def local_curvature(coords, num_points, plot=False):
+    #coords_complete = np.vstack((coords, coords[1, :]))
+
+    distance = np.cumsum(np.sqrt(np.sum(np.diff(coords, axis=0) ** 2, axis=1)))
     distance = np.insert(distance, 0, 0) / distance[-1]
 
-    splines = [UnivariateSpline(distance, coords, k=3) for coords in coords_complete.T]
+    splines = [UnivariateSpline(distance, coord, k=3) for coord in coords.T]
     alpha = np.linspace(0, 1, num_points)
     points_fitted = np.vstack(spl(alpha) for spl in splines).T
     if plot:
-        plt.plot(coords_complete[:, 0], coords_complete[:, 1], '-k', label='original')
+        plt.plot(coords[:, 0], coords[:, 1], '-k', label='original')
         plt.plot(points_fitted[:, 0], points_fitted[:, 1], 'or', label='fitted')
 
         plt.axis('equal');
@@ -122,7 +177,7 @@ def local_curvature(coords, num_points, plot=False):
         plt.xlabel('x');
         plt.ylabel('y')
         plt.show()
-    return coords_complete, points_fitted
+    return coords, points_fitted
 
 
 star = "/Users/ps/data/wip/membeaneCurvature/tomo/run_data.star"
@@ -149,69 +204,14 @@ for volume in volumes:
 orig_imgs = Path("wt/").glob("*.mrc")
 
 for orig_img in orig_imgs:
-
     d = preprocess_img(orig_img, k1, k2)
     # fig, ax = plt.subplots(1, 2)
     intensity_profile_avg, center = average_intensity_profile(d, n_points, n_average, range_start, range_end)
 
-    def find_peaks(intensity_profile_avg, peak_height, range_start, center)
-        global_radius = np.zeros(2)
-        no_peaks = []
-
-        for i in np.arange(n_points):
-            peak_middle, _ = scipy.signal.find_peaks(intensity_profile_avg[i], height=peak_height)
-            peak_outer, _ = scipy.signal.find_peaks(-np.gradient(intensity_profile_avg[i]), height=peak_height)
-            peak_inner, _ = scipy.signal.find_peaks(np.gradient(intensity_profile_avg[i]), height=peak_height)
-
-            peak_sum = 0
-            peak_counter = 0
-            if peak_middle.size != 0:
-                peak_sum += peak_middle[-1]
-                peak_counter += 1
-            if peak_outer.size != 0:
-                peak_sum += peak_outer[-1]
-                peak_counter += 1
-            if peak_inner.size != 0:
-                peak_sum += peak_inner[-1]
-                peak_counter += 1
-
-            if peak_counter == 0:
-                while len(no_peaks) <= no_peak_count:
-                    no_peaks.append(i)
-            else:
-                peak = peak_sum / peak_counter
-                plussing = np.array([peak, 1])
-                global_radius += plussing
-                peak = peak + range_start
-            # ax[1].plot(-np.gradient(intensity_profile_avg[i]))
-
-            # ax[1].plot(peak, -np.gradient(intensity_profile_avg[i]), 'kx')
-            if peak_outer.size != 0:
-                peak_outer = peak_outer[-1] + range_start
-            if peak_middle.size != 0:
-                peak_middle = peak_middle[-1] + range_start
-            if peak_inner.size != 0:
-                peak_inner = peak_inner[-1] + range_start
-
-            xi_o = peak_outer * np.sin(i * d_alpha) + center
-            yi_o = peak_outer * np.cos(i * d_alpha) + center
-            xi_m = peak_middle * np.sin(i * d_alpha) + center
-            yi_m = peak_middle * np.cos(i * d_alpha) + center
-            xi_i = peak_inner * np.sin(i * d_alpha) + center
-            yi_i = peak_inner * np.cos(i * d_alpha) + center
-            detected_xi = peak * np.sin(i * d_alpha) + center
-            detected_yi = peak * np.cos(i * d_alpha) + center
-            global_radius[0] = global_radius[0] / global_radius[1]
-
-            #for i in no_peaks:
-            #    scale = (global_radius[0] + range_start) / rad
-
-            #        ax[0].scatter(s*(circular_points[i][1]-center)+center, s*(circular_points[i][0]-center)+center, c='r', s=5)
-            return detected_xi, detected_yi
-        # ax[0].scatter(xi_o, yi_o, c='intensity_profile_avg', s=5)
-        # ax[0].scatter(xi_m, yi_m, c='g', s=5)
-        # ax[0].scatter(xi_i, yi_i, c='b', s=5)
-        # ax[0].scatter(xi, yi, c='k', s=5)
+    # ax[0].scatter(xi_o, yi_o, c='intensity_profile_avg', s=5)
+    # ax[0].scatter(xi_m, yi_m, c='g', s=5)
+    # ax[0].scatter(xi_i, yi_i, c='b', s=5)
+    # ax[0].scatter(xi, yi, c='k', s=5)
 
     # ax[0].set_title(f'{orig_img.stem}')
     # ax[0].imshow(d, cmap='gray')
